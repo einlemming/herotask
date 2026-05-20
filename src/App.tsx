@@ -33,6 +33,8 @@ export default function App() {
   const [uid, setUid] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [dayActionError, setDayActionError] = useState<string | null>(null)
+  const [isAdvancingDay, setIsAdvancingDay] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const [input, setInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -130,24 +132,34 @@ export default function App() {
   }
 
   const newDay = async () => {
-    if (!uid) return
+    if (!uid || isAdvancingDay) return
 
-    const batch = writeBatch(db)
+    setDayActionError(null)
+    setIsAdvancingDay(true)
 
-    tasks.forEach((task) => {
-      const ref = doc(db, "users", uid, "tasks", task.id)
+    try {
+      const batch = writeBatch(db)
 
-      if (task.done) {
-        batch.delete(ref)
-      } else {
-        batch.update(ref, {
-          carriedOver: true,
-          carryCount: (task.carryCount ?? 0) + 1,
-        })
-      }
-    })
+      tasks.forEach((task) => {
+        const ref = doc(db, "users", uid, "tasks", task.id)
 
-    await batch.commit()
+        if (task.done) {
+          batch.delete(ref)
+        } else {
+          batch.update(ref, {
+            carriedOver: true,
+            carryCount: (task.carryCount ?? 0) + 1,
+          })
+        }
+      })
+
+      await batch.commit()
+    } catch (error) {
+      console.error("New Day commit failed", error)
+      setDayActionError("Saving the new day failed. Please try again.")
+    } finally {
+      setIsAdvancingDay(false)
+    }
   }
 
   const addTask = async () => {
@@ -230,13 +242,23 @@ export default function App() {
           </button>
         </div>
 
+        <p className="mb-6 text-xs text-gray-500">
+          <span className="mr-1" aria-hidden="true">ⓘ</span>
+          Start with <span className="font-medium">!</span> for high priority or <span className="font-medium">.</span> for low priority.
+        </p>
+
         <TaskList tasks={sortedTasks} onToggle={toggleTask} />
+
+        {dayActionError && (
+          <p className="mt-4 text-sm text-red-600">{dayActionError}</p>
+        )}
 
         <button
           onClick={() => void newDay()}
-          className="mt-6 w-full border rounded-lg p-2 hover:bg-gray-100"
+          className="mt-6 w-full border rounded-lg p-2 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isAdvancingDay}
         >
-          New Day -&gt;
+          {isAdvancingDay ? "Saving..." : "New Day →"}
         </button>
       </div>
     </div>
